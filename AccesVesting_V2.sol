@@ -4,18 +4,19 @@
 Metacces Vesting Contract V2
 ****************************/
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "./AccesTimeLock.sol";
 
 pragma solidity 0.8.26;
 
 contract AccesVesting_V2 is AccessControl {
 
+    address public owner;
+
     address public constant zeroAddress = address(0x0);
     address public constant deadAddress = 0x000000000000000000000000000000000000dEaD;
 
-    ERC20 public Acces;
+    IERC20 public Acces;
     uint256 public constant monthly = 30 days;
     uint256 public constant yearly = 365 days;
     uint256 public investorCount;
@@ -31,7 +32,6 @@ contract AccesVesting_V2 is AccessControl {
     uint256 public accesAmount;
     bool public samePercentage = false;
 
-    bytes32 public constant TIMELOCK_ROLE = keccak256("TIMELOCK_ROLE");
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     event InvestorAdded(address Investor, uint256 Amount, string investorType, uint256 yearsLocked);
@@ -89,10 +89,10 @@ contract AccesVesting_V2 is AccessControl {
         _status = _NOT_ENTERED;
     }
 
-    constructor(ERC20 _Acces, address timelock, address accesDeployer) {
+    constructor(IERC20 _Acces, address accesDeployer) {
         _grantRole(DEFAULT_ADMIN_ROLE, accesDeployer);
-        _grantRole(TIMELOCK_ROLE, timelock);
         _grantRole(ADMIN_ROLE, accesDeployer);
+        owner = accesDeployer;
         investorCount = 0;
         Acces = _Acces;
         _status = _NOT_ENTERED;
@@ -101,44 +101,36 @@ contract AccesVesting_V2 is AccessControl {
     function transferOwnership(address _newOwner) external onlyRole(ADMIN_ROLE) {
         require(_newOwner != zeroAddress, "Zero Address");
         emit ChangeOwner(_newOwner);
+        address _oldOwner = owner;
         grantRole(ADMIN_ROLE, _newOwner);
-        revokeRole(ADMIN_ROLE, msg.sender);
+        owner = _newOwner;
+        revokeRole(ADMIN_ROLE, _oldOwner);
     }
 
-    function setMonthlyPercentage(uint256 _mP) external onlyRole(TIMELOCK_ROLE) {
+    function setMonthlyPercentage(uint256 _mP) external onlyRole(ADMIN_ROLE) {
         require(_mP > 0 && _mP <= 30, "Min 1% Max 30%");
         mP = _mP;
         emit MonthlyPercentageChanged(_mP);
     }
 
-    function addToBlackList(address _investor) external onlyRole(TIMELOCK_ROLE) {
+    function addToBlackList(address _investor) external onlyRole(ADMIN_ROLE) {
         require(_investor != zeroAddress, "Zero address");
         blackList[_investor] = true;
         emit addressBlacklisted(_investor);
     }
 
-    function removeFromBlackList(address _investor) external onlyRole(TIMELOCK_ROLE) {
+    function removeFromBlackList(address _investor) external onlyRole(ADMIN_ROLE) {
         require(_investor != zeroAddress, "Zero address");
         blackList[_investor] = false;
         emit removedFromBlacklist(_investor);
     }
 
-    function activateSamePercentage() external onlyRole(TIMELOCK_ROLE) {
+    function activateSamePercentage() external onlyRole(ADMIN_ROLE) {
         samePercentage = true;
     }
 
-    function disableSamePercentage() external onlyRole(TIMELOCK_ROLE) {
+    function disableSamePercentage() external onlyRole(ADMIN_ROLE) {
         samePercentage = false;
-    }
-
-    function editInvestorLock(address _investor, uint256 _yPercent, uint256 _mPercent) external onlyRole(TIMELOCK_ROLE) {
-        require(_investor != zeroAddress && Investor[_investor] == true, "Zero address or address is not investor");
-        require(_yPercent > 10 && _yPercent < 20, "Yearly percent limit!");
-        require(_mPercent > 5 && _mPercent < 10, "Monthly percent limit");
-        require(block.timestamp < investor[_investor].timeStart, "Vesting period has commenced, cannot update");
-        investor[_investor].yP = _yPercent;
-        investor[_investor].mP = _mPercent;
-        setAllowance(_investor);
     }
 
     function addInvestor(address _investor, bool _isTeam, uint256 _amount, uint256 _yPercent, uint256 _lockTime, uint256 _firstUnlock) external onlyRole(ADMIN_ROLE) {
@@ -272,26 +264,26 @@ contract AccesVesting_V2 is AccessControl {
         emit fixedLock(msg.sender);
     }
 
-    function withdrawalAcces(uint256 _amount, uint256 _path, address to) external onlyRole(TIMELOCK_ROLE) {
+    function withdrawalAcces(uint256 _amount, uint256 _path, address to) external onlyRole(ADMIN_ROLE) {
         require(to != zeroAddress, "zero address");
         allVaults();
-        uint256 decimals = Acces.decimals();
+        uint256 decimals = _path;
         require(accesAmount > 0 && _amount*(10 ** decimals) <= accesAmount, "No Acces!");
         emit WithdrawalAcces(_amount, _path, to);
         Acces.transfer(to, _amount*(10 ** decimals));
         allVaults();
     }
 
-    function withdrawalBEP20(address _tokenAddr, uint256 _amount, uint256 decimal, address to) external onlyRole(TIMELOCK_ROLE) {
+    function withdrawalBEP20(address _tokenAddr, uint256 _amount, uint256 decimal, address to) external onlyRole(ADMIN_ROLE) {
         require(to != zeroAddress, "zero address");
         uint256 dcml = 10 ** decimal;
-        ERC20 token = ERC20(_tokenAddr);
+        IERC20 token = IERC20(_tokenAddr);
         require(token != Acces, "No!"); // Can't withdraw Acces using this function!
         emit WithdrawalBEP20(_tokenAddr, _amount, decimal, to);
         token.transfer(to, _amount*(dcml)); 
     }  
 
-    function withdrawalBNB(uint256 _amount, uint256 decimal, address to) external onlyRole(TIMELOCK_ROLE) {
+    function withdrawalBNB(uint256 _amount, uint256 decimal, address to) external onlyRole(ADMIN_ROLE) {
         require(to != zeroAddress, "zero address");
         require(address(this).balance >= _amount, "Balanace"); // No BNB balance available
         uint256 dcml = 10 ** decimal;
