@@ -19,12 +19,12 @@ contract AccesDeployer {
     Transaction[] public transactions;
 
     modifier onlyOwner() {
-        require(isOwner[msg.sender], "not owner");
+        require(isOwner[msg.sender], "Deployer: not owner");
         _;
     }
 
     modifier onlyModule() {
-        require(registeredModules[msg.sender], "not module");
+        require(registeredModules[msg.sender], "Deployer: not module");
         _;
     }
 
@@ -85,6 +85,8 @@ contract AccesDeployer {
         bytes memory _data
     ) public onlyModule {
         uint256 txIndex = transactions.length;
+
+        require(isOwner[_from], "from address is not owner");
 
         transactions.push(
             Transaction({
