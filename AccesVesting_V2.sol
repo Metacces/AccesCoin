@@ -18,7 +18,7 @@ contract AccesVesting_V2 is AccessControl {
 
     IERC20 public Acces;
     uint256 public constant monthly = 30 days;
-    uint256 public constant yearly = 365 days;
+    uint256 public constant yearly = 12 * monthly; // Define a year as 12 months
     uint256 public investorCount;
     uint256 public investorsVault;
     uint256 public teamVault;
@@ -155,7 +155,7 @@ contract AccesVesting_V2 is AccessControl {
         require(firstUnlock < lockTime, "lock error");
         investor[_investor].amount = _amount;
         investor[_investor].yP = _yPercent;
-        investor[_investor].mP = _yPercent*(12); // Fix the calculation
+        investor[_investor].mP = hPercent / 12;
         setAllowance(_investor);
         investor[_investor].lockTime = lockTime+(block.timestamp);
         investor[_investor].timeStart = block.timestamp;
@@ -184,9 +184,10 @@ contract AccesVesting_V2 is AccessControl {
     }
 
     function claimMonthlyAmount() external isInvestor(msg.sender) isNotBlackListed(msg.sender) nonReentrant {
-        require(investor[msg.sender].firstUnlock < block.timestamp, "Unlock in not available yet");
-        require(investorAllowance[msg.sender].yearlyAllowed > 0, "Insufficient allowance, until next year!");
+        require(investor[msg.sender].firstUnlock < block.timestamp, "Unlock is not available yet");
+        require(investorAllowance[msg.sender].yearlyAllowed > 0, "Insufficient allowance, wait until next year!");
         uint256 monthlyAmount;
+
         while(investorAllowance[msg.sender].endYear <= block.timestamp) {
             if(investor[msg.sender].yearlyAllowance > investor[msg.sender].amount) {
                 investor[msg.sender].yearlyAllowance = investor[msg.sender].amount;
@@ -194,12 +195,13 @@ contract AccesVesting_V2 is AccessControl {
             uint256 leftOver = investorAllowance[msg.sender].yearlyAllowed;
             investorAllowance[msg.sender].yearlyAllowed = investor[msg.sender].yearlyAllowance;
             investorAllowance[msg.sender].yearsCount++;
-            investorAllowance[msg.sender].endYear = investorAllowance[msg.sender].endYear+(yearly);
+            investorAllowance[msg.sender].endYear += yearly;
             investorAllowance[msg.sender].yearlyAllowed += leftOver;
-            investorAllowance[msg.sender].monthlyAllowed = investorAllowance[msg.sender].yearlyAllowed/(12);
+            investorAllowance[msg.sender].monthlyAllowed = investorAllowance[msg.sender].yearlyAllowed / 12;
         }
+
         if(samePercentage == true) {
-            monthlyAmount = investor[msg.sender].yearlyAllowance*(mP)/(hPercent);
+            monthlyAmount = investor[msg.sender].yearlyAllowance * mP / hPercent;
         } else {
             monthlyAmount = investorAllowance[msg.sender].monthlyAllowed;
         }
@@ -208,8 +210,12 @@ contract AccesVesting_V2 is AccessControl {
         require(monthlyAmount > 0, "No Acces");
         require(investor[msg.sender].amount >= monthlyAmount, "Insufficient balance to subtract monthly amount");
         require(investorAllowance[msg.sender].yearlyAllowed >= monthlyAmount, "Insufficient yearly allowance to subtract monthly amount");
+
         investor[msg.sender].amount -= monthlyAmount;
-        investor[msg.sender].monthLock = block.timestamp+(monthly);
+
+        // Update monthLock to the next month's start date
+        investor[msg.sender].monthLock += monthly;
+
         if(investor[msg.sender].isTeam == true) {
             teamVault -= monthlyAmount;
         } else {
@@ -231,6 +237,7 @@ contract AccesVesting_V2 is AccessControl {
         Acces.transfer(msg.sender, monthlyAmount);
         investorAllowance[msg.sender].monthsCount++;
     }
+
 
     function claimRemainings() external isInvestor(msg.sender) isNotBlackListed(msg.sender) nonReentrant {
         uint256 totalTimeLock = investor[msg.sender].lockTime;
@@ -257,12 +264,13 @@ contract AccesVesting_V2 is AccessControl {
             uint256 leftOver = investorAllowance[msg.sender].yearlyAllowed;
             investorAllowance[msg.sender].yearlyAllowed = investor[msg.sender].yearlyAllowance;
             investorAllowance[msg.sender].yearsCount++;
-            investorAllowance[msg.sender].endYear = investorAllowance[msg.sender].endYear+(yearly);
+            investorAllowance[msg.sender].endYear += yearly;
             investorAllowance[msg.sender].yearlyAllowed += leftOver;
-            investorAllowance[msg.sender].monthlyAllowed = investorAllowance[msg.sender].yearlyAllowed/(12);
+            investorAllowance[msg.sender].monthlyAllowed = investorAllowance[msg.sender].yearlyAllowed / 12;
         }
         emit fixedLock(msg.sender);
     }
+
 
     function withdrawalAcces(uint256 _amount, uint256 _path, address to) external onlyRole(ADMIN_ROLE) {
         require(to != zeroAddress, "zero address");
